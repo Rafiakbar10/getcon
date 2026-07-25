@@ -6,6 +6,16 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 const API_KEY = process.env.GTC_API_KEY;
 const BASE_URL = 'https://gtc.topupcuy.com/api/v1';
 
+// Header khusus untuk menyamar sebagai browser asli agar lolos dari Cloudflare
+const customHeaders = {
+    'Content-Type': 'application/json',
+    'x-api-key': API_KEY,
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'en-US,en;q=0.9,id;q=0.8',
+    'Referer': 'https://gtc.topupcuy.com/'
+};
+
 bot.start((ctx) => {
     ctx.reply('Halo! Kirimkan nomor yang ingin dicek dengan format:\n`/cek 08123456789`', { parse_mode: 'Markdown' });
 });
@@ -19,16 +29,13 @@ bot.command('cek', async (ctx) => {
     const processingMsg = await ctx.reply('🔄 Sedang memproses pengecekan nomor...');
 
     try {
-        // 1. Inisiasi Cek Nomor (sesuai dokumentasi gambar 1 & 2)
+        // 1. Inisiasi Cek Nomor dengan Header Penyamaran
         const initResponse = await axios.post(`${BASE_URL}/check`, {
             number: input,
             strategy: "smart",
             wait: false
         }, {
-            headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': API_KEY
-            }
+            headers: customHeaders
         });
 
         const { transaction_id, status } = initResponse.data;
@@ -37,20 +44,20 @@ bot.command('cek', async (ctx) => {
             return ctx.telegram.editMessageText(ctx.chat.id, processingMsg.message_id, null, '❌ Gagal memulai transaksi.');
         }
 
-        // Jika langsung sukses (mengambil dari cache)
+        // Jika langsung sukses (dari cache)
         if (status === 'sukses') {
             return formatAndSendResult(ctx, processingMsg.message_id, initResponse.data);
         }
 
-        // 2. Polling Status (jika status masih pending/scraping - gambar 3)
+        // 2. Polling Status
         let attempts = 0;
-        const maxAttempts = 10; // Maksimal percobaan polling
+        const maxAttempts = 10;
         
         const interval = setInterval(async () => {
             attempts++;
             try {
                 const statusResponse = await axios.get(`${BASE_URL}/status/${transaction_id}`, {
-                    headers: { 'x-api-key': API_KEY }
+                    headers: customHeaders
                 });
 
                 const trxStatus = statusResponse.data.status;
@@ -69,15 +76,24 @@ bot.command('cek', async (ctx) => {
                 clearInterval(interval);
                 ctx.telegram.editMessageText(ctx.chat.id, processingMsg.message_id, null, '⚠️ Terjadi kesalahan saat memeriksa status.');
             }
-        }, 3000); // Polling tiap 3 detik
+        }, 3000);
 
     } catch (error) {
-        console.error(error.response?.data || error.message);
-        ctx.telegram.editMessageText(ctx.chat.id, processingMsg.message_id, null, '❌ Terjadi kesalahan pada server API.');
+        // Menangkap detail error jika masih terblokir atau masalah lain
+        const errData = error.response?.data;
+        let errorDetail = error.message;
+        
+        if (typeof errData === 'string' && errData.includes('Cloudflare')) {
+            errorDetail = 'Terblokir Cloudflare (IP Railway terdeteksi data center).';
+        } else if (errData) {
+            errorDetail = JSON.stringify(errData);
+        }
+
+        console.error("Detail Error:", errorDetail);
+        ctx.telegram.editMessageText(ctx.chat.id, processingMsg.message_id, null, `❌ Error API:\n\`${errorDetail}\``, { parse_mode: 'Markdown' });
     }
 });
 
-// Fungsi pembantu untuk merapikan hasil tag
 function formatAndSendResult(ctx, messageId, data) {
     let tagsText = '';
     const tags = data.data?.tags || data.tags;
@@ -94,4 +110,3 @@ function formatAndSendResult(ctx, messageId, data) {
 
 bot.launch();
 console.log('Bot Telegram berjalan...');
-                  
