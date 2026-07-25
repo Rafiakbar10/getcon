@@ -3,7 +3,6 @@ import os
 import requests
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-from apscheduler.schedulers.background import BackgroundScheduler
 
 # Logging setup
 logging.basicConfig(
@@ -72,6 +71,7 @@ async def set_kota(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Harap sertakan nama kota. Contoh: `/setkota Bandung`", parse_mode="Markdown")
 
 def main():
+    # Membangun aplikasi dengan builder yang aman dari error Attribute Error Updater
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
@@ -79,7 +79,7 @@ def main():
     app.add_handler(CommandHandler("setkota", set_kota))
 
     logger.info("Bot sedang berjalan...")
-    app.run_polling()
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
