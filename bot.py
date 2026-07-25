@@ -71,7 +71,6 @@ async def set_kota(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Harap sertakan nama kota. Contoh: `/setkota Bandung`", parse_mode="Markdown")
 
 def main():
-    # Membangun aplikasi dengan builder yang aman dari error Attribute Error Updater
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
